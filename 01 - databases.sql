@@ -23,9 +23,7 @@ CREATE TABLE #dbcc (
     , [db_id] INT DEFAULT DB_ID()
 )
 
-DECLARE @sql NVARCHAR(MAX)
-
-SELECT @sql = STUFF((
+DECLARE @sql NVARCHAR(MAX) = STUFF((
     SELECT '
 USE ' + QUOTENAME([name]) + '
 INSERT INTO #database_size
@@ -112,6 +110,7 @@ SELECT [db_id]          = d.[database_id]
      , [diff_mb]        = b.[diff_size]
      , [log_last_date]  = b.[log_last_date]
      , [log_mb]         = b.[log_size]
+     , [create_date]    = CAST(d.create_date AS DATETIME2(0))
 FROM sys.databases d WITH(NOLOCK)
 LEFT JOIN #database_size s ON d.[database_id] = s.[db_id]
 LEFT JOIN #backup_size b ON d.[name] = b.[db_name]
