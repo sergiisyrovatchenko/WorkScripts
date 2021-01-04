@@ -37,7 +37,7 @@ SELECT [db_name]
      , [size_mb]
      , [used_size_mb]
      , [shrink_size_mb] = [size_mb] - [used_size_mb]
-     , 'USE ' + QUOTENAME([name]) 
+     , 'USE ' + QUOTENAME([db_name]) 
             + CASE WHEN [db_name] = 'tempdb' AND [type] = 'ROWS'
                   THEN '; DBCC FREEPROCCACHE; CHECKPOINT;'
                   ELSE ';'
