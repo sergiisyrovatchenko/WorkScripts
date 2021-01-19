@@ -7,8 +7,11 @@ WHERE [path] LIKE '%CloudHQ%'
 
 DROP TABLE IF EXISTS #trace_file
 
+--SELECT @path
+
 SELECT [StartTime]
      , [TextData] = CAST([TextData] AS NVARCHAR(MAX))
+     , [Size] = CAST(DATALENGTH(TextData) / 1024. / 1024. AS DECIMAL(32,2))
      , [Duration] = [Duration] / 1000
      , [CPU]
      , [Reads]
@@ -31,6 +34,7 @@ WHERE 1 = 1
 
 SELECT TOP(100) StartTime
               , TextData = CAST('<?query --' + CHAR(13) + [TextData] + CHAR(13) + '--?>' AS XML)
+              , [Size]
               , Duration
               , CPU
               , Reads

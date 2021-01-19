@@ -3,15 +3,15 @@ SET ARITHABORT ON
 SET NUMERIC_ROUNDABORT OFF
 SET STATISTICS IO, TIME OFF
 
-IF OBJECT_ID('tempdb.dbo.#database_size') IS NOT NULL
-    DROP TABLE #database_size
+IF OBJECT_ID('tempdb.dbo.#database_files') IS NOT NULL
+    DROP TABLE #database_files
 
-CREATE TABLE #database_size (
-      [db_id]          INT PRIMARY KEY
-    , [data_size]      DECIMAL(32,2)
-    , [data_used_size] DECIMAL(32,2)
-    , [log_size]       DECIMAL(32,2)
-    , [log_used_size]  DECIMAL(32,2)
+CREATE TABLE #database_files (
+      [db_id]      INT DEFAULT DB_ID()
+    , [name]         SYSNAME
+    , [type]         INT
+    , [size_mb]      BIGINT
+    , [used_size_mb] BIGINT
 )
 
 IF OBJECT_ID('tempdb.dbo.#dbcc') IS NOT NULL
@@ -26,19 +26,12 @@ CREATE TABLE #dbcc (
 DECLARE @sql NVARCHAR(MAX) = STUFF((
     SELECT '
 USE ' + QUOTENAME([name]) + '
-INSERT INTO #database_size
-SELECT DB_ID()
-     , SUM(CASE WHEN [type] = 0 THEN [size] END)
-     , SUM(CASE WHEN [type] = 0 THEN [used_size] END)
-     , SUM(CASE WHEN [type] = 1 THEN [size] END)
-     , SUM(CASE WHEN [type] = 1 THEN [used_size] END)
-FROM (
-    SELECT [type]
-         , [size] = SUM(CAST([size] AS BIGINT)) * 8. / 1024
-         , [used_size] = SUM(CAST(FILEPROPERTY([name], ''SpaceUsed'') AS BIGINT) * 8. / 1024)
-    FROM sys.database_files WITH(NOLOCK)
-    GROUP BY [type]
-) t;
+INSERT INTO #database_files ([name], [type], [size_mb], [used_size_mb])
+SELECT [name]
+     , [type]
+     , CAST([size] AS BIGINT) * 8 / 1024
+     , CAST(FILEPROPERTY([name], ''SpaceUsed'') AS BIGINT) * 8 / 1024
+FROM sys.database_files WITH(NOLOCK);
 
 INSERT INTO #dbcc ([key], [value])
 EXEC(''DBCC OPENTRAN WITH TABLERESULTS'');'
@@ -112,7 +105,33 @@ SELECT [db_id]          = d.[database_id]
      , [log_mb]         = b.[log_size]
      , [create_date]    = CAST(d.create_date AS DATETIME2(0))
 FROM sys.databases d WITH(NOLOCK)
-LEFT JOIN #database_size s ON d.[database_id] = s.[db_id]
+LEFT JOIN (
+    SELECT [db_id]
+         , [data_size]      = SUM(CASE WHEN [type] = 0 THEN [size_mb] END)
+         , [data_used_size] = SUM(CASE WHEN [type] = 0 THEN [used_size_mb] END)
+         , [log_size]       = SUM(CASE WHEN [type] = 1 THEN [size_mb] END)
+         , [log_used_size]  = SUM(CASE WHEN [type] = 1 THEN [used_size_mb] END)
+    FROM #database_files
+    GROUP BY [db_id]
+) s ON d.[database_id] = s.[db_id]
 LEFT JOIN #backup_size b ON d.[name] = b.[db_name]
 LEFT JOIN #dbcc t ON d.[database_id] = t.[db_id] AND t.[key] = 'OLDACT_SPID'
 ORDER BY [total_mb] DESC
+
+EXEC sys.xp_fixeddrives
+
+SELECT [db_name]
+     , [name]
+     , [type]
+     , [size_mb]
+     , [used_size_mb]
+     , [shrink_size_mb] = [size_mb] - [used_size_mb]
+     , 'USE ' + QUOTENAME([db_name]) 
+            + CASE WHEN [db_name] = 'tempdb' AND [type] = 0
+                  THEN '; DBCC FREEPROCCACHE; CHECKPOINT;'
+                  ELSE ';'
+              END + ' DBCC SHRINKFILE (N''' + [name] + ''' , ' + CAST([size_mb] AS NVARCHAR(MAX)) + ')'
+FROM #database_files
+CROSS APPLY (SELECT [db_name] = DB_NAME([db_id])) t
+ORDER BY [shrink_size_mb] DESC
+
