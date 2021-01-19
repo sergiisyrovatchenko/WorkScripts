@@ -135,3 +135,19 @@ FROM #database_files
 CROSS APPLY (SELECT [db_name] = DB_NAME([db_id])) t
 ORDER BY [shrink_size_mb] DESC
 
+--SELECT DB_NAME(dbid), * FROM sys.sysprocesses WHERE open_tran = 1
+
+--BACKUP LOG [CloudHQ] TO DISK = 'nul'
+
+/*
+    SELECT D.name
+         , percent_complete
+         , session_id
+         , start_time
+         , status
+         , command
+         , E.blocking_session_id
+    FROM sys.dm_exec_requests E
+    LEFT JOIN sys.databases D ON E.database_id = D.database_id
+    WHERE command IN ('DbccFilesCompact', 'DbccSpaceReclaim', 'DbccLOBCompact')
+*/
